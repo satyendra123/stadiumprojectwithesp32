@@ -79,3 +79,29 @@ def check_qr(request):
         except QRCodeData.DoesNotExist:
             return JsonResponse({'status': 'failure'})
     return JsonResponse({'status': 'error'}, status=400)
+
+#urls.py
+from django.urls import path
+from .views import check_qr
+
+urlpatterns = [
+    path('check_qr/', check_qr, name='check_qr'),
+]
+
+#models.py
+from django.db import models
+
+class QRCodeData(models.Model):
+    data = models.CharField(max_length=255, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return self.data
+
+class DeviceLog(models.Model):
+    device_id = models.CharField(max_length=255)
+    qr_data = models.CharField(max_length=255)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.device_id} - {self.qr_data}"
