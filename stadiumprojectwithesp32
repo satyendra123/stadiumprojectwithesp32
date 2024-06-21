@@ -1,0 +1,81 @@
+# so basically ye sara kaam work kaise krta hai ki. man lo mere pass 60 qr scanner hai 60 gates ke liye. so ye 60 qr scanner jo hai esp32 ke sath connect rhenge. ye esp32 kya karega ki qr scanner se scan karke data lega
+# aur http post kar dega device_id, qr_data ke sath. aur mera python django is data ko receive karega aur database me jakar match karega ki ye qr data jo hai database me hai ya nahi. agar to qr data database me hai to ye success ka message send kar dega 
+# jo mera esp32 receive karega aur relay ko trigger kar dega
+
+#step-1 esp32 code
+import network
+import urequests
+import machine
+import time
+import ujson
+
+# Wi-Fi credentials
+SSID = 'your_ssid'
+PASSWORD = 'your_password'
+
+# Server URL
+SERVER_URL = 'http://your_django_server_url/check_qr/'
+
+# GPIO pin for the relay
+RELAY_PIN = 2
+relay = machine.Pin(RELAY_PIN, machine.Pin.OUT)
+
+# UART configuration
+uart = machine.UART(1, baudrate=9600, tx=17, rx=16)
+
+# Unique device ID
+DEVICE_ID = 'device_001'  # Replace with the actual device ID
+
+def connect_wifi():
+    wlan = network.WLAN(network.STA_IF)
+    wlan.active(True)
+    wlan.connect(SSID, PASSWORD)
+    while not wlan.isconnected():
+        pass
+    print('Connected to WiFi:', wlan.ifconfig())
+
+def post_qr_data(qr_data):
+    headers = {'Content-Type': 'application/json'}
+    payload = {'qr_data': qr_data, 'device_id': DEVICE_ID}
+    response = urequests.post(SERVER_URL, data=ujson.dumps(payload), headers=headers)
+    return response.json()
+
+def main():
+    connect_wifi()
+    while True:
+        if uart.any():
+            qr_data = uart.readline().decode('utf-8').strip()  # Read and decode data from UART
+            print('QR Data:', qr_data)
+            response = post_qr_data(qr_data)
+            if response.get('status') == 'success':
+                relay.value(1)  # Trigger the relay
+                time.sleep(5)  # Keep the relay on for 5 seconds
+                relay.value(0)  # Turn off the relay
+
+if __name__ == "__main__":
+    main()
+
+#step-2 python django code. remember that we need to change in the settings.py file cors and allowed me ip likhna hoga
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+import json
+
+# Assuming you have a model named QRCodeData and another model for devices (optional)
+from .models import QRCodeData
+
+@csrf_exempt
+def check_qr(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        qr_data = data.get('qr_data')
+        device_id = data.get('device_id')
+        
+        # Optionally, log or process device_id here
+        print(f"Data received from device: {device_id}")
+
+        try:
+            qr_code = QRCodeData.objects.get(data=qr_data)
+            return JsonResponse({'status': 'success'})
+        except QRCodeData.DoesNotExist:
+            return JsonResponse({'status': 'failure'})
+    return JsonResponse({'status': 'error'}, status=400)
